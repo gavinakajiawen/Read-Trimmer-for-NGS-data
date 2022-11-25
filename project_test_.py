@@ -7,6 +7,15 @@ import re
 import sys
 import argparse
 import os 
+import logging
+
+#--------------------------------------------------------------------
+try:
+    os.mkdir("Genvej")
+except FileExistsError:
+    # directory already exists
+    pass
+#--------------------------------------------------------------------
 
 #--------------------------------------------------------------------
 # Declaration of  colours. 
@@ -55,6 +64,13 @@ parser.add_argument("--shear", type = int, required = False,
 
 parser.add_argument("--snip", type=int, required= False,
     help="Trims 5' prime end of a read by (x) amount of nucleotides")
+
+
+parser.add_argument("--trim_minimum", 
+    type= int, 
+    required = False,
+    help="Trim reads based on a minimum quality score using PHRED 33 only.")
+
 
 #--------------------------------------------------------------------
 # Add an optional argument
@@ -109,8 +125,11 @@ if args.name:
     print('Hello '+ args.name.capitalize() + 
         ", Welcome to Genvej: Read Trimmer for Next Generation Sequencing Data \n")	
     
-    #--------------------------------------------------------------------
-log_file = open("log.dat", "w")
+#--------------------------------------------------------------------
+logging.basicConfig(filename="Genvej/log_file.txt", 
+                    format='%(asctime)s %(message)s', 
+                    filemode='w',level=logging.INFO) 
+
 #--------------------------------------------------------------------
 
 
@@ -132,9 +151,9 @@ else:
     
     
     
-    #-------------------------------------------------------------------
-    # uncompressed_file
-    #-------------------------------------------------------------------
+#-------------------------------------------------------------------
+# uncompressed_file
+#-------------------------------------------------------------------
     
     # If the filename does not end in gz, open the file. 
 if search_gz is None:
@@ -146,16 +165,16 @@ if search_gz is None:
     finally:
         print("FASTQ File Information: \nThe name of the file is:"+ args.filename.name)
         
-        #-------------------------------------------------------------------
-        
-        #-------------------------------------------------------------------
-        # shear and snip 
-        #-------------------------------------------------------------------
-        # Set the 3' and 5' ends to trim. 
+
+#-------------------------------------------------------------------
+# shear and snip 
+#-------------------------------------------------------------------
+# Set the 3' and 5' ends to trim. 
+
 three_prime_end = args.shear
 
 five_prime_end = args.snip
-#------------------------------------------------------------------
+
 
 #--------------------------------------------------------------------
 # compressed_file
@@ -174,9 +193,9 @@ if search_gz is not None:
     finally:
         print("FASTQ File Information: \nThe name of the file is:", str(args.filename.name))
         
-        #-------------------------------------------------------------------
-        # core functions
-        #-------------------------------------------------------------------
+#-------------------------------------------------------------------
+# core functions
+#-------------------------------------------------------------------
 def convert_thirty_three(s):
     ''' Take a string a convert to a phredd 33 quality score list'''
     M = []
@@ -202,15 +221,16 @@ def convert_back_thirty_three(number):
     
     return M
 #-------------------------------------------------------------------
+#-------------------------------------------------------------------
+#-------------------------------------------------------------------
+#-------------------------------------------------------------------
+#-------------------------------------------------------------------
 
 print(bright_purple + "#--------------------------------------------------------------------#")
 print(" STAGE 1")
 print(bright_purple + "#--------------------------------------------------------------------#" + reset)
 
-#-------------------------------------------------------------------
-#-------------------------------------------------------------------
-#-------------------------------------------------------------------
-#-------------------------------------------------------------------
+
 # Handle an uncompressed file and determine the encoding. 
 
 line_number = 0
@@ -235,7 +255,7 @@ if search_gz is None:
     print("Currently", str(int(line_number/4)), "read(s) in this file.")
     print("The length of the untrimmed sequence is:", len(seq_line))
     print("The phred line is:", phred_line)
-    
+
     # search for characters only in phred33 
     search_phred33 = re.search(r'([#=!?>;$&%+()/.*":<]|[0-9])', phred_line)
     
@@ -248,12 +268,11 @@ if search_gz is None:
     if search_phred64 is not None:
         #print(search_phred64.group(1))
         print("This FASTQ file has PHRED 64 encoding (OLD ILLUMINA)")
-        
-        #------------------------------------------------------------------
-        #--------------------------------------------------------------------
-        # phred 33 and uncompressed.
-        # read each line of the file as a string into a list. 
-        # Every fourth line is the quality line. 
+#------------------------------------------------------------------
+#--------------------------------------------------------------------
+# phred 33 and uncompressed.
+# read each line of the file as a string into a list. 
+# Every fourth line is the quality line. 
         
 header_list=[]
 dna_sequences=[]
@@ -294,16 +313,18 @@ if search_gz is None and search_phred33 is not None:
                 quality_sequence[-1] += search_quality[1]
                 
 infile.close()
+
 #--------------------------------------------------------------------
 #  TRIM AND WRITE 
 #--------------------------------------------------------------------
 # Make use of the lists to perform the trimming 
 # Append the trimmed sequences to new lists.
-if search_gz is None and search_phred33 is not None:
+
+if search_gz is None and search_phred33 is not None and args.trim_minimum is None:
     
     trimmed_dna_seq =[]
     trimmed_qual_seq = []
-    
+        
     for d in dna_sequences:
         trimmed_dna_seq.append(d[three_prime_end:-five_prime_end])
         
@@ -315,9 +336,9 @@ if search_gz is None and search_phred33 is not None:
     #--------------------------------------------------------------------
     # Write to an uncompressed fastq file.
     # specification to write:
-    
+
     if search_gz is None and search_phred33 is not None:
-        outfile = open("trimmed_uncompressed_33.fq", "w")
+        outfile = open(os.path.join("Genvej","trimmed_uncompressed_33.fq"), "w")
         
         print(bright_purple + "\nUNCOMPRESSED PHRED 33" + reset)
         for h,s,p,q in console_reads:
@@ -331,25 +352,74 @@ if search_gz is None and search_phred33 is not None:
         print(bright_purple + "The trimmed uncompressed PHRED33 FASTQ file is on your computer." + reset)
         print(bright_purple + str(int(line_number/4)), "reads were trimmed." + reset)
         
-        #-------------------------------------------------------------------
-        #-------------------------------------------------------------------
-        #-------------------------------------------------------------------
-        #-------------------------------------------------------------------
+#-------------------------------------------------------------------
+#-------------------------------------------------------------------
+#-------------------------------------------------------------------
+#-------------------------------------------------------------------
+#--------------------------------------------------------------------
+# Trim each read from the 3' end based on quality (not based on input).   
+# *** ((minimum moving window part)).***
+#--------------------------------------------------------------------
+        
+new_quality_sequence= []
+new_dna_sequence = []
+mapped = dict()
+
+if search_gz is None and search_phred33 is not None and args.trim_minimum:
+    print('\nThe lowest quality score in the read will be: ', args.trim_minimum, "\n")
+    
+    #--------------------------------------------------------------------    
+    window_reads = list(zip(header_list, dna_sequences, plus_signs, quality_sequence))
+    
+    for h,d,p,q in window_reads:
+        mapped = tuple(zip(d, convert_thirty_three(q)))
+        
+        new_dna_sequence.append('')
+        new_quality_sequence.append('')
+        
+        # If the quality score is more than a minimum of x, add the corresponding nucleotide
+        for i in mapped:
+            if i[1] >= args.trim_minimum:
+                new_dna_sequence[-1] += i[0]
+                new_quality_sequence[-1] += convert_back_thirty_three(i[1])
+                
+    #--------------------------------------------------------------------        
+    window_trim_reads = list(zip(header_list, new_dna_sequence, plus_signs, new_quality_sequence))
+    
+    #--------------------------------------------------------------------        
+    # Write to an uncompressed fastq file.
+    # specification to write:
+    
+    try:
+        outfile_w = open(os.path.join("Genvej","window_uncompressed_33.fq"), "w")
+        print(bright_purple + "\n WINDOW UNCOMPRESSED PHRED 33" + reset)
+    
+        for h,d,p,q in window_trim_reads:
+            #print to screen. 
+            print(h+"\n"+d+"\n"+p+q)
+            # print to file.
+            print(h+"\n"+d+"\n"+p+q, file = outfile_w)
+        
+        outfile_w.close()
+        
+        print(bright_purple +"The windowed uncompressed PHRED33 FASTQ file is on your computer." + reset)
+        print(bright_purple +str(int(line_number/4)), "reads were trimmed." + reset)
+    except:
+        pass 
+#-------------------------------------------------------------------
+#-------------------------------------------------------------------
+#-------------------------------------------------------------------
+#-------------------------------------------------------------------
+
+
+
+#-------------------------------------------------------------------
+#-------------------------------------------------------------------
+#-------------------------------------------------------------------
+#-------------------------------------------------------------------
         
         
-        #--------------------------------------------------------------------
-        # Trim each read from the 3' end based on quality (not based on input).   
-        # *** Add in code here for ((moving window part)).***
-        #--------------------------------------------------------------------
-        
-        
-        #-------------------------------------------------------------------
-        #-------------------------------------------------------------------
-        #-------------------------------------------------------------------
-        #-------------------------------------------------------------------
-        
-        
-        #--------------------------------------------------------------------
+#--------------------------------------------------------------------
 print(bright_cyan + "#--------------------------------------------------------------------#")
 print(" STAGE 2")
 print(bright_cyan + "#--------------------------------------------------------------------#" + reset)
@@ -366,13 +436,14 @@ if search_gz is not None:
     except FileNotFoundError as error_F:
         print(bright_cyan + "There is a minor problem with opening the FASTQ file.", reset)
         sys.exit(1)
+        
     except gzip.BadGzipFile as error_geez:
         print(bright_cyan + "This file has the suffix of .gz, but it is actually not compressed."+ reset)
         print(bright_cyan+ "Rename the file by removing the .gz part. "+ reset)
+        
         sys.exit(1)
     finally:
         print("FASTQ File Information: \nThe name of the file is:", str(args.filename.name))
-        
         
 if search_gz is not None: 
     
@@ -403,12 +474,11 @@ if search_gz is not None:
     if search_phred33 is not None:
         #print(search_phred33.group(1))
         print("This FASTQ file called has PHRED 33 encoding (SANGER)")
-        
+            
     search_phred64 = re.search(r'([L-Z]|[a-j])', second_phred_line)
     if search_phred64 is not None:
         #print(search_phred64.group(1))
         print("This FASTQ file has PHRED 64 encoding (OLD ILLUMINA)")
-        
         #--------------------------------------------------------------------
         #--------------------------------------------------------------------
         # phred 33 and compressed.
@@ -477,14 +547,15 @@ if search_gz is not None and search_phred33 is not None:
         
     console_reads = list(zip(header_list, second_trimmed_dna_seq, plus_signs, second_trimmed_qual_seq))
     
-    #--------------------------------------------------------------------
+#--------------------------------------------------------------------
     # Write to an uncompressed fastq file.
     # specification to write:
     
     if search_gz is not None and search_phred33 is not None:
-        outfile = open("trimmed_compressed_33.fq.gz", "w")
-        
+        outfile = open(os.path.join("Genvej","trimmed_compressed_33.fq.gz"), "w")
+            
         print(bright_cyan + "\nCOMPRESSED PHRED 33" + reset)
+        
         for h,s,p,q in console_reads:
             #print to screen. 
             print(h+"\n"+s+"\n"+p+q)
@@ -496,20 +567,17 @@ if search_gz is not None and search_phred33 is not None:
         print(bright_cyan + "The trimmed compressed PHRED33 FASTQ file is on your computer." + reset)
         print(bright_cyan + str(int(new_line_number/4)), "reads were trimmed." + reset)
         
-        #--------------------------------------------------------------------
-        #-------------------------------------------------------------------
-        #-------------------------------------------------------------------
-        #-------------------------------------------------------------------
+#--------------------------------------------------------------------
+#-------------------------------------------------------------------
+#-------------------------------------------------------------------
+#-------------------------------------------------------------------
+
+
+#-------------------------------------------------------------------
+#-------------------------------------------------------------------
+#-------------------------------------------------------------------
+#-------------------------------------------------------------------
         
-        '''
-'''
-        
-        #-------------------------------------------------------------------
-        #-------------------------------------------------------------------
-        #-------------------------------------------------------------------
-        #-------------------------------------------------------------------
-        
-# DEBUG FROM HERE...
 #--------------------------------------------------------------------
 print(bright_yellow + "#--------------------------------------------------------------------#")
 print(" STAGE 3")
@@ -584,7 +652,7 @@ if search_gz is not None and search_phred64 is not None:
     # specification to write:
     
     if search_gz is not None and search_phred64 is not None:
-        outfile_three = open("trimmed_compressed_64.fq.gz", "w")
+        outfile_three = open(os.path.join("Genvej","trimmed_compressed_64.fq.gz"), "w")
         
         print(bright_yellow + "\nCOMPRESSED PHRED 64" + reset)
         
@@ -616,7 +684,7 @@ print(bright_green + "#---------------------------------------------------------
 # The encoding has already been identified above. 
 
 
-file_there = os.path.isfile('trimmed_compressed_64.fq.gz')
+file_there = os.path.isfile("Genvej\trimmed_compressed_64.fq.gz")
 
 
 f_header_list= []
@@ -680,7 +748,7 @@ if search_gz is None and search_phred64 is not None:
     if search_gz is None and search_phred64 is not None:
         print(bright_green + "\nUNCOMPRESSED PHRED 64" + reset)
         
-        outfile = open("trimmed_uncompressed_64.fq", "w")
+        outfile = open(os.path.join("Genvej","trimmed_uncompressed_64.fq"), "w")
     
         for t,d,p,q in console_reads:
             print(t.strip() +"\n"+ d+"\n"+ p + q)
@@ -690,13 +758,6 @@ if search_gz is None and search_phred64 is not None:
         print(bright_green + "The trimmed uncompressed PHRED64 FASTQ file is on your computer" + reset)
 
 #--------------------------------------------------------------------
-#-------------------------------------------------------------------
-#-------------------------------------------------------------------
-#-------------------------------------------------------------------
-#-------------------------------------------------------------------
-    
-
-
 #-------------------------------------------------------------------
 #-------------------------------------------------------------------
 #-------------------------------------------------------------------
