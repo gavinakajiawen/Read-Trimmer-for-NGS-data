@@ -16,30 +16,73 @@ experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](h
 ## Overview
 
 `Genvej` is Read Trimmer for Next Generation Sequencing Data program
-written in Python3.
+written in Python 3.
 
 `Genvej` provides a consistent set of verbs that help you trim reads
-from FASTQ files. These files may be compressed, uncompressed, encoded
-in with PHRED 64 or PHRED 33 quality scores.
+from FASTQ files.
+
+These files may be compressed, uncompressed, encoded in with PHRED 64 or
+PHRED 33 quality scores.
+
+``` bash
+python3 project_test_.py
+```
+
+------------------------------------------------------------------------
+
+### Method 1
+
+-   `--filename` is used before the name of the file is entered
 
 -   `--shear` Trims 3’ prime end of a read by (x) amount of nucleotides
 
 -   `--snip` Trims 5’ prime end of a read by (x) amount of nucleotides
 
--   `--filename` is a prefix to the filename entered
+``` bash
+python3 project_test_.py --filename PHRED.gz --shear 5 --snip 5 
+```
+
+------------------------------------------------------------------------
+
+### Method 2
+
+-   `--filename` is used before the name of the file is entered
 
 -   `--trim_minimum` Trims reads based on a minimum quality score using
     PHRED 33 only.
 
--   `--name` Receive a friendly welcome message
+``` bash
+python3 project_test_.py --filename BRISCOE.fastq --trim_minimum 20
+```
+
+------------------------------------------------------------------------
+
+-   `--name` Receive a friendly welcome message. This is used before
+    your name is entered.
+
+``` bash
+python3 project_test_.py --name 
+```
 
 -   `--version` Display the version of the program
+
+``` bash
+python3 project_test_.py --version 
+```
 
 -   `--cite` Display the citation for the paper associated with the
     program
 
-You can learn more about the functions in the help section of the
-program `--help`.
+``` bash
+python3 project_test_.py --cite
+```
+
+-   Learn about the functions in the help section of the program
+    `--help`.
+
+``` bash
+python3 project_test_.py --h 
+```
 
 If you are new to `Genvej`, the best place to start is this github
 repository.
@@ -60,7 +103,7 @@ The link to the Github repository is :
 
 If you encounter a clear bug, please file an issue with a minimal
 reproducible example on GitHub. For questions and other discussion,
-please email `s172084@dtu.dk`
+please email `s172084@dtu.dk` or `s222372@student.dtu.dk`
 
 Please note that this project is released with a Contributor Code of
 Conduct. By participating in this project you agree to abide by its
